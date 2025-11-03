@@ -1,12 +1,12 @@
 """
-FL Path Animator V2 - Standalone Node Pack
+FL Path Animator - Standalone Node Pack
 Creates animated shapes that follow user-drawn paths with visual editor.
 """
 
 from .nodes.FL_PathAnimator import FL_PathAnimator
 
 NODE_CLASS_MAPPINGS = {
-    "FL_PathAnimatorV2": FL_PathAnimatorV2,
+    "FL_PathAnimator": FL_PathAnimator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {

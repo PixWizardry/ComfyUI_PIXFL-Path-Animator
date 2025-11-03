@@ -30,7 +30,7 @@ class FL_PathAnimator:
     RETURN_TYPES = ("IMAGE", "MASK", "STRING",)
     RETURN_NAMES = ("image", "mask", "coordinates",)
     FUNCTION = "animate_paths"
-    CATEGORY = "🎨 FL Path Animator V2"
+    CATEGORY = "🎨 FL Path Animator"
     DESCRIPTION = """
 Creates animated shapes that follow user-drawn paths.
 Open the path editor to draw trajectories on a reference image, then shapes will follow these paths over time.
@@ -261,7 +261,7 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
             paths = paths_obj.get('paths', [])
             canvas_size = paths_obj.get('canvas_size', {'width': frame_width, 'height': frame_height})
         except json.JSONDecodeError:
-            print("FL_PathAnimatorV2: Invalid JSON in paths_data, using empty paths")
+            print("FL_PathAnimator: Invalid JSON in paths_data, using empty paths")
             paths = []
             canvas_size = {'width': frame_width, 'height': frame_height}
 
@@ -369,6 +369,6 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
         # Output as list of tracks (each track is a list of 121 {x, y} points)
         coord_string = json.dumps(coord_tracks)
 
-        print(f"FL_PathAnimatorV2: Generated {len(coord_tracks)} tracks with 121 points each for WAN ATI")
+        print(f"FL_PathAnimator: Generated {len(coord_tracks)} tracks with 121 points each for WAN ATI")
 
         return (out_images, out_masks, coord_string)

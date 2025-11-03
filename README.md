@@ -18,7 +18,7 @@ A standalone ComfyUI custom node for creating animated shapes that follow user-d
 1. Clone or download this repository into your ComfyUI custom_nodes folder:
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/yourusername/ComfyUI_FL-Path-Animator.git
+git clone https://github.com/machinedelusions/ComfyUI_FL-Path-Animator.git
 ```
 
 2. Restart ComfyUI
@@ -27,7 +27,7 @@ git clone https://github.com/yourusername/ComfyUI_FL-Path-Animator.git
 
 ### Basic Workflow
 
-1. Add the "FL Path Animator V2" node to your workflow
+1. Add the "FL Path Animator" node to your workflow
 2. Click the **"Edit Paths"** button to open the path editor
 3. Use the toolbar to:
    - **✏️ Pencil** - Draw motion paths (hold SHIFT for straight lines)
@@ -131,5 +131,5 @@ Extracted as standalone node for easier distribution.
 ## Support
 
 For issues, feature requests, or questions:
-- GitHub Issues: [Your repo issues page]
+- GitHub Issues: https://github.com/machinedelusions/ComfyUI_FL-Path-Animator/issues
 - Patreon: https://www.patreon.com/c/Machinedelusions
