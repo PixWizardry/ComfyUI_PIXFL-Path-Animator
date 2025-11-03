@@ -1138,7 +1138,7 @@ class PathEditorModal {
 
             // Draw border
             this.ctx.strokeStyle = isSelected ? neonGreen : '#fff';
-            this.ctx.lineWidth = (isSelected ? 4 : 2) * scale;
+            this.ctx.lineWidth = (isSelected ? 2 : 2) * scale;
             this.ctx.strokeRect(point.x - size / 2, point.y - size / 2, size, size);
 
             // Draw label for static points
@@ -1157,7 +1157,7 @@ class PathEditorModal {
             }
 
             this.ctx.strokeStyle = isSelected ? neonGreen : path.color;
-            this.ctx.lineWidth = (isSelected ? this.pathThickness + 1 : this.pathThickness) * scale;
+            this.ctx.lineWidth = (isSelected ? this.pathThickness + 0.1 : this.pathThickness) * scale;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
             this.ctx.stroke();
