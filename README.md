@@ -85,10 +85,6 @@ When a path is selected, the sidebar now exposes:
 ## Installation
 
 1. Clone or download this repository into your ComfyUI custom_nodes folder:
-```bash
-cd ComfyUI/custom_nodes/
-git clone https://github.com/machinedelusions/ComfyUI_FL-Path-Animator.git
-```
 
 2. Restart ComfyUI
 
@@ -217,4 +213,3 @@ Extracted as standalone node for easier distribution.
 
 For issues, feature requests, or questions:
 - GitHub Issues: https://github.com/machinedelusions/ComfyUI_FL-Path-Animator/issues
-- Patreon: https://www.patreon.com/c/Machinedelusions
