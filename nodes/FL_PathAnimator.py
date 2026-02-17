@@ -3,6 +3,9 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 import math
 import json
+import logging
+
+logger = logging.getLogger("FL_PathAnimator")
 
 def pil2tensor(image):
     """Convert PIL Image to tensor"""
@@ -28,19 +31,15 @@ def parse_color(color):
 def apply_interpolation(t, interpolation_type='linear'):
     """Apply interpolation easing function to parameter t (0.0 to 1.0)"""
     if interpolation_type == 'ease-in':
-        # Quadratic ease in
         return t * t
     elif interpolation_type == 'ease-out':
-        # Quadratic ease out
         return t * (2 - t)
     elif interpolation_type == 'ease-in-out':
-        # Quadratic ease in-out
         if t < 0.5:
             return 2 * t * t
         else:
             return -1 + (4 - 2 * t) * t
     else:
-        # Linear (default)
         return t
 
 class FL_PathAnimator:
@@ -80,6 +79,11 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
                 "border_width": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1}),
                 "border_color": ("STRING", {"default": 'white'}),
                 "paths_data": ("STRING", {"default": '{"paths": [], "canvas_size": {"width": 512, "height": 512}}', "multiline": True}),
+                # New optional parameters (ported from fork, renamed for clarity)
+                "start_time_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.1, "display": "number"}),
+                "end_time_percent": ("FLOAT", {"default": 100.0, "min": 0.0, "max": 100.0, "step": 0.1, "display": "number"}),
+                "override_path_length": ("INT", {"default": -1, "min": -1, "max": 8192, "step": 1, "display": "number"}),
+                "path_length_multiplier": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 100.0, "step": 0.1, "display": "number"}),
             }
         }
 
@@ -218,6 +222,17 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
 
         return resampled
 
+    def get_path_arc_length(self, points):
+        """Calculate the total arc length of a path."""
+        if len(points) < 2:
+            return 0.0
+        total_length = 0.0
+        for i in range(len(points) - 1):
+            dx = points[i + 1]['x'] - points[i]['x']
+            dy = points[i + 1]['y'] - points[i]['y']
+            total_length += math.sqrt(dx * dx + dy * dy)
+        return total_length
+
     def interpolate_path(self, points, t):
         """
         Interpolate position along a path at time t (0.0 to 1.0)
@@ -266,7 +281,9 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
     def animate_paths(self, frame_width, frame_height, frame_count, shape, shape_size,
                      shape_color, bg_color, blur_radius=0.0, trail_length=0.0,
                      rotation_speed=0.0, border_width=0, border_color='white',
-                     paths_data='{"paths": [], "canvas_size": {"width": 512, "height": 512}}'):
+                     paths_data='{"paths": [], "canvas_size": {"width": 512, "height": 512}}',
+                     start_time_percent=0.0, end_time_percent=100.0,
+                     override_path_length=-1, path_length_multiplier=1.0):
 
         # Parse colors
         shape_color = parse_color(shape_color)
@@ -279,7 +296,7 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
             paths = paths_obj.get('paths', [])
             canvas_size = paths_obj.get('canvas_size', {'width': frame_width, 'height': frame_height})
         except json.JSONDecodeError:
-            print("FL_PathAnimator: Invalid JSON in paths_data, using empty paths")
+            logger.warning("Invalid JSON in paths_data, using empty paths")
             paths = []
             canvas_size = {'width': frame_width, 'height': frame_height}
 
@@ -307,6 +324,65 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
 
             scaled_paths.append(scaled_path)
 
+        # --- Path length scaling (B1 fix: delta-based, not radial) ---
+        # B7 fix: treat override_path_length=0 as disabled (same as -1)
+        effective_override = override_path_length if override_path_length > 0 else -1
+
+        for path in scaled_paths:
+            points = path.get('points', [])
+            is_motion_path = len(points) > 1 and not path.get('isSinglePoint', False)
+
+            if not is_motion_path:
+                continue
+
+            original_length = self.get_path_arc_length(points)
+            if original_length <= 0:
+                continue
+
+            # Determine the base length
+            if effective_override > 0:
+                base_length = float(effective_override)
+            else:
+                base_length = original_length
+
+            # Apply path_length_multiplier
+            target_length = base_length * path_length_multiplier
+
+            if abs(target_length - original_length) < 1e-6:
+                continue
+
+            # B1 fix: delta-based scaling instead of radial scaling from points[0].
+            # Scale inter-segment deltas uniformly to preserve curve shape.
+            scale_factor = target_length / original_length
+            logger.info(f"Scaling path '{path.get('name', 'Untitled')}' "
+                        f"from {original_length:.1f}px to {target_length:.1f}px "
+                        f"(factor: {scale_factor:.2f}x)")
+
+            new_points = [{'x': points[0]['x'], 'y': points[0]['y']}]
+            for i in range(1, len(points)):
+                dx = points[i]['x'] - points[i - 1]['x']
+                dy = points[i]['y'] - points[i - 1]['y']
+                new_points.append({
+                    'x': new_points[-1]['x'] + dx * scale_factor,
+                    'y': new_points[-1]['y'] + dy * scale_factor,
+                })
+            path['points'] = new_points
+
+        # --- Global timeline override ---
+        # B4 fix: swap start/end if inverted, clamp both to [0.0, 1.0]
+        use_global_timeline = (start_time_percent != 0.0 or end_time_percent != 100.0)
+        if use_global_timeline:
+            global_start_time = max(0.0, min(1.0, start_time_percent / 100.0))
+            global_end_time = max(0.0, min(1.0, end_time_percent / 100.0))
+            # B4 fix: swap if inverted
+            if global_start_time > global_end_time:
+                global_start_time, global_end_time = global_end_time, global_start_time
+            # B4 fix: ensure nonzero duration
+            if global_start_time == global_end_time:
+                global_end_time = min(1.0, global_start_time + 0.01)
+            # B6 fix: log warning
+            logger.info(f"Global timeline override: {global_start_time*100:.1f}% to {global_end_time*100:.1f}%")
+
         images_list = []
         masks_list = []
         previous_output = None
@@ -326,8 +402,14 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
                     continue
 
                 # Get timeline parameters
-                start_time = path.get('startTime', 0.0)
-                end_time = path.get('endTime', 1.0)
+                if use_global_timeline:
+                    # B6 fix: log when overriding per-path timing
+                    start_time = global_start_time
+                    end_time = global_end_time
+                else:
+                    start_time = path.get('startTime', 0.0)
+                    end_time = path.get('endTime', 1.0)
+
                 interpolation = path.get('interpolation', 'linear')
                 visibility_mode = path.get('visibilityMode', 'pop')
 
@@ -348,17 +430,15 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
                     # Calculate rotation based on local time
                     current_rotation = rotation_speed * eased_t * 360.0
                 elif visibility_mode == 'static':
-                    # Static mode: show at start or end position when outside timeline
+                    # B3 fix: keep upstream's fallback render at start position
                     if global_t < start_time:
-                        # Before timeline: show at start position
                         x, y = self.interpolate_path(points, 0.0)
                         current_rotation = 0.0
                     else:
-                        # After timeline: show at end position
                         x, y = self.interpolate_path(points, 1.0)
                         current_rotation = rotation_speed * 360.0
                 else:
-                    # Fallback: show at start position
+                    # B3 fix: fallback to start position (don't skip)
                     x, y = self.interpolate_path(points, 0.0)
                     current_rotation = 0.0
 
@@ -373,10 +453,12 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
             # Convert to tensor
             image_tensor = pil2tensor(image)
 
-            # Apply trailing effect
+            # B2 fix: keep upstream's trail normalization (smooth glow, not hard-clamp)
             if trail_length > 0 and previous_output is not None:
                 image_tensor = image_tensor + trail_length * previous_output
-                image_tensor = image_tensor / image_tensor.max()
+                max_val = image_tensor.max()
+                if max_val > 0:
+                    image_tensor = image_tensor / max_val
 
             previous_output = image_tensor.clone()
 
@@ -393,21 +475,28 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
         out_images = torch.cat(images_list, dim=0)
         out_masks = torch.cat(masks_list, dim=0)
 
-        # SOLUTION 2 & 3: Generate WAN ATI-compatible coordinate string
-        # Resample each path to exactly 121 points with visibility flags
+        # Generate WAN ATI-compatible coordinate string
+        # B5 fix: subsample coords to respect global timeline window
         coord_tracks = []
         for path in scaled_paths:
             points = path.get('points', [])
 
-            # Check if this is a single-point path (static anchor)
-            is_single_point = path.get('isSinglePoint', False) or len(points) == 1
-
             # Resample to exactly 121 points for WAN ATI compatibility
             resampled_points = self.resample_path_uniform(points, num_samples=121)
 
-            # Add visibility flag (1.0 = visible, required by WAN ATI)
-            # Format: [{"x": x, "y": y}, {"x": x, "y": y}, ...]
-            # The visibility will be added as a third coordinate when processed by ATI
+            if use_global_timeline and len(points) > 1 and not path.get('isSinglePoint', False):
+                # B5 fix: subsample the 121 points to only the global timeline window
+                # Map the global timeline percentage to indices
+                start_idx = int(round(global_start_time * 120))
+                end_idx = int(round(global_end_time * 120))
+                if end_idx <= start_idx:
+                    end_idx = start_idx + 1
+
+                # Extract the windowed portion and re-resample to 121 points
+                windowed = resampled_points[start_idx:end_idx + 1]
+                if len(windowed) >= 2:
+                    resampled_points = self.resample_path_uniform(windowed, num_samples=121)
+
             track_coords = [
                 {"x": int(round(p["x"])), "y": int(round(p["y"]))}
                 for p in resampled_points
@@ -418,6 +507,6 @@ Outputs WAN ATI-compatible coordinate strings with proper 121-point resampling f
         # Output as list of tracks (each track is a list of 121 {x, y} points)
         coord_string = json.dumps(coord_tracks)
 
-        print(f"FL_PathAnimator: Generated {len(coord_tracks)} tracks with 121 points each for WAN ATI")
+        logger.info(f"Generated {len(coord_tracks)} tracks with 121 points each for WAN ATI")
 
         return (out_images, out_masks, coord_string)
